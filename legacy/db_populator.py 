@@ -1,0 +1,291 @@
+import pymongo, Tkinter as tk, ttk, constants
+from mongo_api import mongo_client
+
+# Database config
+domain = "localhost"
+port = 27017
+client = pymongo.MongoClient(domain, port)
+db = client.ryder_cup
+players = db.players
+matches = db.matches
+
+# GUI for adding entries
+class populator(tk.Frame):
+
+    def __init__(self, master=None):
+        self.mongo_client = mongo_client()
+        # Call superclass constructor
+        self.master = master
+        self.master.title("Ryder Cup DB populator")
+        self.master.minsize(width=800, height=800)
+
+        # Mainframe setup
+        self.mainframe = ttk.Frame(self.master)
+        self.mainframe.grid(column=0, row=0, sticky='nwes')
+        self.mainframe.columnconfigure(0, weight=1)
+        self.mainframe.rowconfigure(0, weight=1)
+
+        ttk.Label(self.mainframe).grid(column=0, row=0)
+        ttk.Label(self.mainframe).grid(column=1, row=0)
+
+        # Initialize collection specific widgets
+        self.initialize_players_collection()
+        self.initialize_matches_collection()
+
+        # Initialize collection option menu
+        self.collection_var = tk.StringVar(self.master)
+        self.collection_var.set(constants.collection_options[0])
+        collection_change_lambda = lambda x, y, z: self.collection_change()
+        self.collection_var.trace("w", collection_change_lambda)
+        ttk.OptionMenu(self.mainframe, self.collection_var, constants.collection_options[0], *constants.collection_options).grid(column=0, row=0)
+
+        # Initialize submit button
+        ttk.Button(self.mainframe, text="Submit", command=self.submit_entry).grid(column=1, row=len(constants.players_labels)+1)
+
+        # Run GUI
+        #self.print_players_labels()
+        #self.print_players_variables()
+        #self.print_players_entry_widgets()
+        #self.print_matches_labels()
+        #self.print_matches_variables()
+        #self.print_matches_entry_widgets()
+        self.master.mainloop()
+
+    def print_players_labels(self):
+        print "Printing players labels: "
+        for label in self.players_label_widgets:
+            print label["text"]
+        print
+
+    def print_players_variables(self):
+        print "Printing players variables: "
+        for key, val in self.players_entry_variables.items():
+            print "Key: {}, val: {}".format(key, val.get())
+        print
+
+    def print_players_entry_widgets(self):
+        print "Printing players entry widgets: "
+        for widget in self.players_entry_widgets:
+            print widget
+        print
+
+    def print_matches_labels(self):
+        print "Printing matches labels: "
+        for label in self.matches_label_widgets:
+            print label["text"]
+        print
+
+    def print_matches_variables(self):
+        print "Printing matches variables: "
+        for key, val in self.matches_entry_variables.items():
+            print "Key: {}, val: {}".format(key, val.get())
+        print
+
+    def print_matches_entry_widgets(self):
+        print "Printing matches entry widgets: "
+        for widget in self.matches_entry_widgets:
+            print widget
+        print
+
+    def initialize_players_collection(self):
+        self.players_label_widgets = []
+        self.players_entry_variables = {}
+        self.players_entry_widgets = []
+        for i in xrange(len(constants.players_labels)):
+            self.initialize_label(constants.players_labels[i], self.players_label_widgets, i)
+            var_type = None
+            # Name is string, year is integer, all statistics are doubles
+            if i == 0:
+                # Special initialization for name combo box
+                name_var = tk.StringVar(self.master)
+                self.name_combo_box = ttk.Combobox(self.mainframe, width=10, textvariable=name_var, postcommand=self.update_players_name_cb)
+                self.name_combo_box.grid(column=1, row=i+1, sticky='e')
+                self.players_entry_variables[constants.players_entry_labels[i]] = name_var
+                self.players_entry_widgets.append(self.name_combo_box)
+            else:
+                if i == 2:
+                    # Special initialization for ryder cup team option menu
+                    self.initialize_menu(constants.players_entry_labels[i], self.players_entry_variables, self.players_entry_widgets, constants.team_options, i)
+                else:
+                    if i == 1:
+                        var_type = tk.IntVar
+                    else:
+                        var_type = tk.DoubleVar
+                    self.initialize_entry(constants.players_entry_labels[i], self.players_entry_variables, self.players_entry_widgets, var_type, i)
+
+    def update_players_name_cb(self):
+        name_list = []
+        cursor = players.find({})
+        for player in cursor:
+            name_list.append(player[constants.players_entry_labels[0]])
+        self.name_combo_box['values'] = name_list
+        #self.print_players_labels()
+        #self.print_players_variables()
+        #self.print_players_entry_widgets()
+
+    def initialize_matches_collection(self):
+        self.matches_label_widgets = []
+        self.matches_entry_variables = {}
+        self.matches_entry_widgets = []
+        for i in xrange(len(constants.matches_labels)):
+            self.initialize_label(constants.matches_labels[i], self.matches_label_widgets, i)
+            if i == 0:
+                # Special initialization for match type option menu
+                self.initialize_menu(constants.team_matches_entry_labels[i], self.matches_entry_variables, self.matches_entry_widgets, constants.matches_types, i)
+            else:
+                var_type = None
+                # Everything but year and result are type string
+                if i > 1 and i < len(constants.matches_labels)-1:
+                    var_type = tk.StringVar
+                else:
+                    var_type = tk.IntVar
+
+                # Player fields are menus, other fields are entries
+                if i >= 2 and i <= 5:
+                    self.initialize_menu(constants.team_matches_entry_labels[i], self.matches_entry_variables, self.matches_entry_widgets, [], i)
+                else:
+                    self.initialize_entry(constants.team_matches_entry_labels[i], self.matches_entry_variables, self.matches_entry_widgets, var_type, i)
+
+    def update_matches_names(self):
+        usa_names = []
+        europe_names = []
+        cursor = players.find({})
+        for player in cursor:
+            if player[constants.players_entry_labels[2]] == constants.team_options[0]:
+                usa_names.append(player[constants.players_entry_labels[0]])
+            else:
+                europe_names.append(player[constants.players_entry_labels[0]])
+
+        self.clear_name_oms(self.matches_entry_widgets[2:6])
+        for name in usa_names:
+            self.add_name_to_oms(name, self.matches_entry_widgets[2:4], constants.team_matches_entry_labels[2:4])
+
+        for name in europe_names:
+            self.add_name_to_oms(name, self.matches_entry_widgets[4:6], constants.team_matches_entry_labels[4:6])
+
+        #self.print_matches_labels()
+        #self.print_matches_variables()
+        #self.print_matches_entry_widgets()
+
+    def clear_name_oms(self, oms):
+        for om in oms:
+            om["menu"].delete(0, "end")
+
+    def add_name_to_oms(self, name, oms, om_labels):
+        for i in xrange(len(oms)):
+            om = oms[i]
+            om_var = self.matches_entry_variables[om_labels[i]]
+            om["menu"].add_command(label=name, command=lambda value=name: om_var.set(value))
+
+    def initialize_label(self, label_text, label_widgets, i):
+        # Create and store label
+        label = ttk.Label(self.mainframe, text=label_text)
+        label.grid(column=0, row=i+1, stick='e')
+        label_widgets.append(label)
+
+    def initialize_entry(self, entry_label, entry_variables, entry_widgets, var_type, i):
+        # Create and store entry
+        entry_variables[entry_label] = var_type(self.master)
+        entry = ttk.Entry(self.mainframe, width=10, textvariable=entry_variables[entry_label])
+        entry.grid(column=1, row=i+1, sticky='e')
+        entry_widgets.append(entry)
+
+    def initialize_menu(self, menu_label, menu_variables, menu_widgets, value_options, i):
+        initial_val = value_options[0] if len(value_options) > 0 else ''
+        # Create and store menu
+        menu_var = tk.StringVar(self.master)
+        menu_var.set(initial_val)
+        menu = ttk.OptionMenu(self.mainframe, menu_var, initial_val, *value_options)
+        menu.grid(column=1, row=i+1, sticky='e')
+        menu_variables[menu_label] = menu_var
+        menu_widgets.append(menu)
+
+    def collection_change(self):
+        option = self.collection_var.get()
+        # Forget current collection widgets and show new collection widgets on collection change
+        if option == constants.collection_options[0]:
+            self.forget_widgets(self.matches_label_widgets, self.matches_entry_widgets)
+            self.show_widgets(self.players_label_widgets, self.players_entry_widgets)
+        elif option == constants.collection_options[1]:
+            self.forget_widgets(self.players_label_widgets, self.players_entry_widgets)
+            self.show_widgets(self.matches_label_widgets, self.matches_entry_widgets)
+            # Update matches name option menus
+            self.update_matches_names()
+
+    def forget_widgets(self, labels, entries):
+        for i in xrange(len(labels)):
+            labels[i].grid_forget()
+            entries[i].grid_forget()
+
+    def show_widgets(self, labels, entries):
+       for i in xrange(len(labels)):
+            labels[i].grid(column=0, row=i+1, sticky='e')
+            entries[i].grid(column=1, row=i+1, sticky='e')
+
+    def submit_entry(self):
+        cur_collection = self.collection_var.get()
+        is_players = cur_collection == constants.collection_options[0]
+        if is_players:
+            # Add entry to players if player doesn't exist, otherwise add entry in stats map
+            player_name = self.players_entry_variables[constants.players_entry_labels[0]].get()
+            mongo_entry = self.mongo_client.find_player_entry({"name": player_name})
+            if mongo_entry is None:
+                self.add_players_mongo_entry()
+            else:
+                self.add_stats(mongo_entry)
+
+            # Update player names combo box
+            self.update_players_name_cb()
+        else:
+            # If
+            pass
+
+    def add_players_mongo_entry(self):
+        player_name = self.players_entry_variables[constants.players_entry_labels[0]].get()
+        year = str(self.players_entry_variables[constants.players_entry_labels[1]].get())
+        team = self.players_entry_variables[constants.players_entry_labels[2]].get()
+
+        # Populate stats_map
+        stats_map = {}
+        self.populate_stats_map(stats_map)
+
+        self.mongo_client.insert_player_entry(player_name, year, stats_map, team)
+
+    def add_stats(self, player_entry):
+        year = str(self.players_entry_variables[constants.players_entry_labels[1]].get())
+
+        # Populate stats_map
+        stats_map = {}
+        self.populate_stats_map(stats_map)
+
+        # Update entry
+        player_entry["stats"][year] = stats_map
+        self.mongo_client.update_player_entry(player_entry, year)
+
+    def populate_stats_map(self, stats_map):
+        # Add statistics
+        for key, val in self.players_entry_variables.items():
+            if key not in constants.players_entry_labels[0:3]:
+                stats_map[key] = val.get()
+            self.clear_entry_variable(val, key, True)
+
+    def add_matches_mongo_entry(self):
+        pass
+
+    def add_match(self):
+        pass
+
+    def clear_entry_variable(self, current_entry_variable, key, is_players):
+        # Reset to default value based on type
+        cur_val_type = type(current_entry_variable.get())
+        if cur_val_type == float:
+            current_entry_variable.set(0.0)
+        elif cur_val_type == int:
+            current_entry_variable.set(0)
+        elif not ((not is_players and (key == constants.team_matches_entry_labels[0] or key in constants.team_matches_entry_labels[2:6])) or\
+                     (is_players and key == constants.players_entry_labels[2])):
+            current_entry_variable.set('')
+
+if __name__=="__main__":
+    root = tk.Tk()
+    app = populator(master=root)
